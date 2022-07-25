@@ -419,7 +419,7 @@
                 </div>
               </div>
               <br>
-              <div id="recom5" style="width:100%;max-width:700px"></div>
+              <!--<div id="recom5" style="width:100%;max-width:700px"></div>-->
               <script>
                 var wArray = {{r70 | safe}};
                 var xArray = {{rsi | safe}};
@@ -611,6 +611,13 @@
               <span class='changepred' data-change='{{predsign}}'><h6>{{changefromtoday}} ({{changefromtodayper}}%)</h6></span>
             </div>
           </div>
+          <div class="col-lg-7 pred-btn-container text-center">
+            <div class="sentchange pred-btn align-middle" data-change='Positive Sentiment'>
+              <h5 style="font-family:Trebuchet MS;">WIPRO has a Positive Sentiment </h5>
+              <h5>as of 2022-07-20</h5>
+            </div>
+          </div>
+          
           </div>
       </div>
     </section><!-- End Price Prediction Section -->
@@ -652,7 +659,7 @@
                 </script>
             </div>
             <div class="col"> 
-              <!--<div id="myPlot2" style="width:100%;max-width:700px"></div>--> 
+              <div id="myPlot2" style="width:100%;max-width:700px"></div>
               <script>
                 var xArray = {{highPrice | safe}};
                 var yArray = {{lowPrice | safe}};
