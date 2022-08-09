@@ -1,26 +1,37 @@
 import numpy as np
-from numpy.lib.function_base import append
+import warnings
 import pandas as pd
 import yfinance as yf
-# import tensorflow
+from urllib.request import urlopen,Request
+import nltk
+from nltk.sentiment.vader import SentimentIntensityAnalyzer
+from bs4 import BeautifulSoup
+from numpy.lib.function_base import append
 from tensorflow.keras.models import load_model
 from sklearn.preprocessing import StandardScaler,MinMaxScaler
-from flask import Flask,flash  
-from datetime import datetime
-from flask import render_template  
-from flask import request, redirect, url_for      # import flask
+from flask import Flask,render_template,request, redirect, url_for
+# from forms import ContactForm
+from datetime import datetime, timedelta
 from sklearn import preprocessing
-import os
-os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
+nltk.download('vader_lexicon')
 
 #import fundamental
 app = Flask(__name__)             # create an app instance
 app.static_folder = 'static'
-app.secret_key = 'random string'
+app.secret_key = 'secretKey'
 
-@app.route("/")                   # at the end point /
-def mainpage():                      # call method hello
-    return render_template("index.html") 
+@app.route("/", methods=['GET', 'POST'])
+def mainpage():                      
+    form = None
+    if request.method == 'POST':
+        name =  request.form.get("name")
+        email = request.form.get("email")
+        subject = request.form.get("subject")
+        message = request.form.get("message")
+        res = pd.DataFrame({'name':name, 'email':email, 'subject':subject ,'message':message}, index=[0])
+        res.to_csv('contactusMessage.csv',mode='a', header=False, index=False)
+    else:
+        return render_template("index.html", form=form) 
 
 @app.route('/predictnow', methods=['GET', 'POST'])
 def predictnow():
@@ -33,7 +44,6 @@ def predict():
     if request.method == "POST":
         ticker = request.form.get("ticker")
         stock = yf.Ticker(ticker+".NS")
-        
         try:
             stock = yf.Ticker(ticker+".NS")
             try:
@@ -69,12 +79,10 @@ def predict():
             previousclose=stock.info['previousClose']
         except KeyError:
             return render_template('ErrorPage.html')
-
         
         ###Prediction Start
         regressor = load_model(ticker+".h5")
         # Last 10 days prices
-        #stock = yf.Ticker("--ticker name--.NS")
         dt = stock.history(interval="1d", period="10d")
         new_dt = dt.filter(['Close'])
         sc=MinMaxScaler()
@@ -115,7 +123,7 @@ def predict():
             changefromtodayper=changefromtodaype
             predsign="-"
         #print(predicted_Price)
-        ####Prediction End
+        ####Prediction End   
         
         changefromyesterda = round(currentPrice-previousclose, 3)
         changefromyesterdaype = round(((currentPrice-previousclose)/previousclose)*100,3)
@@ -133,7 +141,7 @@ def predict():
         req = request.form
         print(req)
 
-        d = stock.history(period="1y",interval="1d")
+        d = stock.history(period="2y",interval="1d")
         d.drop(['Dividends','Stock Splits'], axis=1, inplace=True)
         d['Returns']=((d['Close']-d['Open'])/d['Open'])*100
         d.to_csv('Stock_data.csv')
@@ -173,6 +181,7 @@ def predict():
             j=j+1
         
         #Recommendation
+
         temp = stock.history(period="2y",interval="1d")
         temp.drop(['Dividends','Stock Splits'], axis=1, inplace=True)
         temp['Returns']=((temp['Close']-temp['Open'])/temp['Open'])*100
@@ -180,17 +189,60 @@ def predict():
         stock_data = pd.read_csv('Recommendation.csv')
         stock_data.sort_values('Date')
 
+        #SMA
         stock_data['SMA_25'] = stock_data['Close'].rolling(25).mean()
         stock_data['SMA_50'] = stock_data['Close'].rolling(50).mean()
         stock_data['Signal_SMA'] = np.where(stock_data['SMA_25'] > stock_data['SMA_50'], 1.0, 0.0)
         stock_data['Position_SMA'] = stock_data['Signal_SMA'].diff()
         stock_data = stock_data.dropna()
+        #SMA-backtest
+        buyAmt = 0
+        sellAmt = 0
+        return_perSMA = 0
+        buyDates = np.array([])
+        for i in range(stock_data.shape[0]):
+            if stock_data.iloc[i, 10]==1:
+                buyAmt = buyAmt + stock_data.iloc[i, 4]*100
+                buyDates = np.append(buyDates, i)
+        for i in range(stock_data.shape[0]):
+            for j in buyDates:
+                if i == j:
+                    if (int(j)+60 < stock_data.shape[0]):
+                        sellAmt = sellAmt + stock_data.iloc[int(j+60), 4]*100
+                    else:
+                        sellAmt = sellAmt + stock_data.iloc[int(j+10), 4]*100
+        buyAmt=round(buyAmt,3)
+        total_SMA = round(sellAmt - buyAmt,3)
+        return_perSMA = round((sellAmt/buyAmt)*100,3)
 
+        #EMA
         stock_data['EMA_25'] = stock_data['Close'].ewm(span= 25, adjust=False).mean()
         stock_data['EMA_50'] = stock_data['Close'].ewm(span= 50, adjust=False).mean()
         stock_data['Signal_EMA'] = np.where(stock_data['EMA_25'] > stock_data['EMA_50'], 1.0, 0.0)
         stock_data['Position_EMA'] = stock_data['Signal_EMA'].diff()
+        #EMA-backtest
+        emabuyAmt = 0
+        emasellAmt = 0
+        emabuyDates = np.array([])
 
+        for i in range(stock_data.shape[0]):
+            if stock_data.iloc[i, 14]==1:
+                emabuyAmt = emabuyAmt + stock_data.iloc[i, 4]*100
+                emabuyDates = np.append(emabuyDates, i)
+                
+        emabuyAmt=round(emabuyAmt,3)
+        for i in range(stock_data.shape[0]):
+            for j in emabuyDates:
+                if i == j:
+                    if (int(j)+60 < stock_data.shape[0]):
+                        emasellAmt = emasellAmt + stock_data.iloc[int(j+60), 4]*100
+                    else:
+                        emasellAmt = emasellAmt + stock_data.iloc[int(j+10), 4]*100            
+                    
+        total_EMA = round((emasellAmt - emabuyAmt),3) 
+        return_perEMA=round(((emasellAmt/emabuyAmt)*100),3)
+
+        #BB
         stock_data['Rolling Mean'] = stock_data['Close'].rolling(20).mean()
         stock_data['Rolling Std'] = stock_data['Close'].rolling(20).std()
         stock_data['Bollinger High'] = stock_data['Rolling Mean'] + (stock_data['Rolling Std']*2) 
@@ -204,12 +256,55 @@ def predict():
 
         stock_data['Signal_BB'].fillna(method='ffill',inplace=True)
         stock_data['Position_BB'] = stock_data['Signal_BB'].diff()
+        #BB-backtest
+        bbbuyAmt = 0
+        bbsellAmt = 0
+        bbbuyDates = np.array([])
 
+        for i in range(stock_data.shape[0]):
+            if stock_data.iloc[i, 20] == 1:
+                bbbuyAmt = bbbuyAmt + stock_data.iloc[i, 4]*100
+                bbbuyDates = np.append(bbbuyDates, i)
+
+        bbbuyAmt=round(bbbuyAmt,3)
+        for i in range(stock_data.shape[0]):
+            for j in bbbuyDates:
+                if i == j:
+                    if (int(j)+60 < stock_data.shape[0]):
+                        bbsellAmt = bbsellAmt + stock_data.iloc[int(j+60), 4]*100
+                    else:
+                        bbsellAmt = bbsellAmt + stock_data.iloc[int(j), 4]*100
+
+        total_BB = round((bbsellAmt - bbbuyAmt),3)
+        return_perBB = round(((bbsellAmt/bbbuyAmt)*100),3)
+
+        #MACD
         stock_data['MACD'] = stock_data['Close'].ewm(span=12, adjust= False).mean() - stock_data['Close'].ewm(span=26, adjust= False).mean()
         stock_data['Signal_9'] = stock_data['MACD'].ewm(span=9, adjust= False).mean()
         stock_data['Signal_MACD'] = np.where(stock_data.loc[:, 'MACD'] > stock_data.loc[:, 'Signal_9'], 1.0, 0.0)
         stock_data['Position_MACD'] = stock_data['Signal_MACD'].diff()
+        #MACD-backtest
+        cdbuyAmt = 0
+        cdsellAmt = 0
+        cdbuyDates = np.array([])
+        for i in range(stock_data.shape[0]):
+            if stock_data.iloc[i, 24]==1:
+                cdbuyAmt = buyAmt + stock_data.iloc[i, 4]*100
+                cdbuyDates = np.append(buyDates, i)
+                
+        cdbuyAmt=round(cdbuyAmt,3)
+        for i in range(stock_data.shape[0]):
+            for j in cdbuyDates:
+                if i == j:
+                    if (int(j)+60 < stock_data.shape[0]):
+                        cdsellAmt = cdsellAmt + stock_data.iloc[int(j+60), 4]*100
+                    else:
+                        cdsellAmt = cdsellAmt + stock_data.iloc[int(j+8), 4]*100
+
+        total_MACD = round((cdsellAmt - cdbuyAmt),3)
+        return_perCD=round(((cdsellAmt/cdbuyAmt)*100),3)
         
+        #RSI
         stock_data['Diff'] = stock_data['Close'].diff()
         stock_data['Gain'] = stock_data['Diff'][stock_data['Diff']>0]
         stock_data['Loss'] = (-1)*stock_data["Diff"][stock_data["Diff"]<0]
@@ -353,6 +448,108 @@ def predict():
             r30.append(30)
             k=k+1
         
+        ###Sentiment Analysis
+        nifty50 = pd.read_csv("nifty50.csv")
+        urlsymbol=""
+        outfile=""
+        for i in nifty50.index:
+            if (nifty50['TICKER'][i]==ticker):
+                urlsymbol=nifty50['Company Name'][i]
+                outfile=nifty50['TICKER'][i]
+        
+        url = 'https://in.investing.com/equities/{urlsymbol}'.format(urlsymbol=urlsymbol)
+        req = Request(url=url,headers={'user-agent': 'my-app/0.0.1'}) 
+        resp = urlopen(req)  
+        html = BeautifulSoup(resp, features="lxml")
+        news_table = html.find(class_="common-articles-list")
+
+        pagenumbers=6
+        for i in range(2,pagenumbers):
+            page = i
+            #newdict={}
+            url = 'https://in.investing.com/equities/{urlsymbol}/{page}'.format(urlsymbol=urlsymbol,page=page)
+            req = Request(url=url,headers={'user-agent': 'my-app/0.0.1'}) 
+            resp = urlopen(req) 
+            html = BeautifulSoup(resp, features="lxml")
+            newdict = html.find(class_="common-articles-list")
+            news_table.append(newdict)
+
+        df=news_table.findAll('h3')
+        news_list=[]
+        count=0
+        for link in df:
+            news_list.append(link.get("title"))
+            count=count+1
+        
+        df1=news_table.findAll('time')
+        news_time=[]
+        j=1
+        count1=0
+        for time in df1:
+            if j%2==0:
+                news_time.append(time.text)
+                count1=count1+1
+                j=j+1
+                continue
+            else:
+                j=j+1
+                continue
+        
+        class my_dictionary(dict):
+            def __init__(self):
+                self = dict()
+            def add(self, key, value):
+                self[key] = value
+        dict_obj = my_dictionary()
+        i=1
+        for i in range(count1):
+            dict_obj.add(news_list[i], news_time[i])
+        
+        data=pd.DataFrame(dict_obj.items(), columns=['News','date'])
+        data['date'] = data['date'].str.replace("hours ago","")
+
+        def newhours(x):
+            d = datetime.today() - timedelta(hours=x)
+            return d.strftime('%b %d, %Y %R')
+
+        for i in data.index:
+            if len(data['date'][i]) == 3 or len(data['date'][i]) == 2 :
+                x=int(data['date'][i])
+                y=newhours(x)
+                data['date'][i]=y
+
+        data['date'] = data['date'].str.replace("minutes ago","")
+
+        def newminutes(x):
+            d = datetime.today() - timedelta(minutes=x)
+            return d.strftime('%b %d, %Y %R')
+
+        for i in data.index:
+            if len(data['date'][i]) == (3 or 2):
+                x=int(data['date'][i])
+                y=newminutes(x)
+                data['date'][i]=y
+
+        data['date']=pd.to_datetime(data.date).dt.date
+        vader = SentimentIntensityAnalyzer()
+        scores = data['News'].apply(vader.polarity_scores).tolist()
+        scores_df = pd.DataFrame(scores)
+        data = data.join(scores_df, rsuffix='_right')
+        data['Date'] = pd.to_datetime(data.date).dt.date
+        mean_scores=data.groupby(['Date']).mean()
+        sentival=mean_scores['compound'][-1]
+        mean_scores.to_csv('tempsenti.csv')
+        df7=pd.read_csv("tempsenti.csv")
+        dateval=df7['Date'].iloc[-1]
+        sentiscore=""
+        if sentival > 0:
+            sentiscore="Positive Sentiment"
+        elif sentival < 0:
+            sentiscore="Negative Sentiment"
+        else:
+            sentiscore="Neutral Sentiment"
+        ###Sentiment End
+
         return render_template("prediction_1.html",
         ticker=ticker, value  = value, fullname=fullname, website=website, bookvalue=bookvalue,
         fiftytwochange=fiftytwochange,beta=beta,currentPrice=currentPrice, dayHigh=dayHigh,
@@ -376,15 +573,11 @@ def predict():
         showcdsellprice=showcdsellprice,showbbbuydate=showbbbuydate,showbbbuyprice=showbbbuyprice,
         showbbselldate=showbbselldate,showbbsellprice=showbbsellprice,showrsibuydate=showrsibuydate,
         showrsibuyprice=showrsibuyprice,showrsiselldate=showrsiselldate,showrsisellprice=showrsisellprice,
-        tom_price=tom_price,changefromtoday=changefromtoday,changefromtodayper=changefromtodayper,predsign=predsign)
+        tom_price=tom_price,changefromtoday=changefromtoday,changefromtodayper=changefromtodayper,
+        predsign=predsign,sentiscore=sentiscore,dateval=dateval,buyAmt=buyAmt,total_SMA=total_SMA,
+        return_perSMA=return_perSMA,emabuyAmt=emabuyAmt,total_EMA=total_EMA,return_perEMA=return_perEMA,
+        bbbuyAmt=bbbuyAmt,total_BB=total_BB,return_perBB=return_perBB,cdbuyAmt=cdbuyAmt,total_MACD=total_MACD,
+        return_perCD=return_perCD)
 
-    #return render_template(/getdata)  
-@app.route("/portfolio", methods=["GET", "POST"])
-def portfolio():
-    if request.method == "POST":
-        ticker = request.form.get("ticker") 
-        buyprice=request.form.get("buyprice")
-        buydate=request.form.get("buydate")
-        numstock=request.form.get("numstock")
 if __name__ == "__main__":        # on running python app.py
-    app.run(debug=False,host='0.0.0.0')                     # run the flask app 
+    app.run()                     # run the flask app 

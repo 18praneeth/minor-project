@@ -599,28 +599,32 @@
       </section><!-- End Fundamental Analysis Section -->
 
       <!-- ======= Price Prediction Section ======= -->
-    <section id="prediction" class="prediction">
-      <div class="container" data-aos="fade-up">
-        <div class="section-title">
-          <h2>Price Prediction</h2>
+      <section id="prediction" class="prediction">
+        <div class="container" data-aos="fade-up">
+          <div class="section-title">
+            <h2>Price Prediction</h2>
+          </div>
         </div>
+        <div class="section-bg">
+          <div class="container" data-aos="fade-up">
+            <br><br>
+            <div class="col-lg-7 pred-btn-container text-center">
+              <div class="pred-btn align-middle" >
+                <h2>{{tom_price}}</h2>
+                <span class='changepred' data-change='{{predsign}}'><h6>{{changefromtoday}} ({{changefromtodayper}}%)</h6></span>
+              </div>
+            </div>
+            <br>
+            <div class="col-lg-7 pred-btn-container text-center">
+              <div class="sentchange pred-btn align-middle" data-change='{{sentiscore}}'>
+                <h5 style="font-family:Trebuchet MS;">{{ticker}} has a {{sentiscore}} </h5>
+                <h5>as of {{dateval}}</h5>
+              </div>
+            </div>
+            <br><br>
+          </div>
         </div>
-          <div class="col-lg-7 pred-btn-container text-center">
-            <div class="pred-btn align-middle" >
-              <h2>{{tom_price}}</h2>
-              <span class='changepred' data-change='{{predsign}}'><h6>{{changefromtoday}} ({{changefromtodayper}}%)</h6></span>
-            </div>
-          </div>
-          <div class="col-lg-7 pred-btn-container text-center">
-            <div class="sentchange pred-btn align-middle" data-change='Positive Sentiment'>
-              <h5 style="font-family:Trebuchet MS;">WIPRO has a Positive Sentiment </h5>
-              <h5>as of 2022-07-20</h5>
-            </div>
-          </div>
-          
-          </div>
-      </div>
-    </section><!-- End Price Prediction Section -->
+      </section><!-- End Price Prediction Section -->
 
     <!-- ======= Stock Visualization ======= -->
     <section id="stockviz" class="stockviz">
